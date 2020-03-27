@@ -1,0 +1,180 @@
+---
+# Builds and Releases packages for eBPF to be consumed by NetData Agent
+name: CD
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  build:
+    name: Build
+    strategy:
+      matrix:
+        kernel_version:
+          - '5.4.20'
+          - '4.20.17'
+          - '4.19.105'
+          - '4.19.104'
+          - '4.19.98'
+          - '4.19.6'
+          - '4.18.20'
+          - '4.18.16'
+          - '4.16.18'
+          - '4.16.3'
+          - '4.15'
+          - '4.18.0'
+          - '4.14.171'
+          - '3.10.0'
+        libc:
+          - glibc
+          - musl
+        exclude:
+          # excludes musl on 4.18.20
+          - kernel_version: 4.18.20
+            libc: musl
+          # excludes musl on 4.18.16
+          - kernel_version: 4.18.16
+            libc: musl
+          # excludes musl on 4.18.0
+          - kernel_version: 4.18.0
+            libc: musl
+          # excludes musl on 4.16.18
+          - kernel_version: 4.16.18
+            libc: musl
+          # excludes musl on 4.16.3
+          - kernel_version: 4.16.3
+            libc: musl
+          # excludes musl on 4.15
+          - kernel_version: 4.15
+            libc: musl
+          # excludes musl on 3.10.0
+          - kernel_version: 3.10.0
+            libc: musl
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Run buil.sh
+        run: |
+          if [ ${{ matrix.kernel_version }} = "4.18.0" ]; then
+            os=centos8
+          elif [ ${{ matrix.kernel_version }} = "3.10.0" ]; then
+            os=centos7
+          else
+            os=generic
+          fi
+          ./build.sh ${{ matrix.kernel_version }} ${{ matrix.libc }} "${os}"
+      - name: List Artifacts
+        run: |
+          ls -lah artifacts
+          test -f artifacts/netdata_ebpf-*.tar.xz
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v1
+        if: success()
+        with:
+          name: artifacts-${{ matrix.kernel_version }}-${{ matrix.libc }}
+          path: artifacts
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          # TODO: Generate ChagneLog here for Release Description
+          body: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Write upload_url
+        run: |
+          mkdir -p upload_url
+          echo '${{ steps.create_release.outputs.upload_url }}' > upload_url/upload_url.txt
+      - name: Upload upload_url
+        uses: actions/upload-artifact@v1
+        with:
+          name: upload_url
+          path: upload_url
+
+  upload:
+    name: Upload
+    needs: release
+    strategy:
+      matrix:
+        kernel_version:
+          - '5.4.20'
+          - '4.20.17'
+          - '4.19.105'
+          - '4.19.104'
+          - '4.19.98'
+          - '4.19.6'
+          - '4.18.20'
+          - '4.18.16'
+          - '4.16.18'
+          - '4.16.3'
+          - '4.15'
+          - '4.18.0'
+          - '4.14.171'
+          - '3.10.0'
+        libc:
+          - glibc
+          - musl
+        exclude:
+          # excludes musl on 4.18.20
+          - kernel_version: 4.18.20
+            libc: musl
+          # excludes musl on 4.18.16
+          - kernel_version: 4.18.16
+            libc: musl
+          # excludes musl on 4.18.0
+          - kernel_version: 4.18.0
+            libc: musl
+          # excludes musl on 4.16.18
+          - kernel_version: 4.16.18
+            libc: musl
+          # excludes musl on 4.16.3
+          - kernel_version: 4.16.3
+            libc: musl
+          # excludes musl on 4.15
+          - kernel_version: 4.15
+            libc: musl
+          # excludes musl on 3.10.0
+          - kernel_version: 3.10.0
+            libc: musl
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download upload_url
+        uses: actions/download-artifact@v1
+        with:
+          name: upload_url
+      - name: Set upload_url
+        run: |
+          echo "::set-env name=UPLOAD_URL::$(cat upload_url/upload_url.txt)"
+      - name: Download artifacts-${{ matrix.kernel_version }}-${{ matrix.libc }}
+        uses: actions/download-artifact@v1
+        with:
+          name: artifacts-${{ matrix.kernel_version }}-${{ matrix.libc }}
+      - name: List Artifact artifacts-${{ matrix.kernel_version }}-${{ matrix.libc }}
+        run: |
+          ls -lah artifacts-${{ matrix.kernel_version }}-${{ matrix.libc }}
+      - name: Compute Asset Filename
+        id: asset-filename
+        run: |
+          cd artifacts-${{ matrix.kernel_version }}-${{ matrix.libc }}
+          ls netdata_ebpf-*.tar.xz
+          echo "::set-output name=name::$(ls netdata_ebpf-*.tar.xz)"
+      - name: Upload Release Asset ${{ steps.asset-filename.outputs.name }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ env.UPLOAD_URL }}
+          asset_path: artifacts-${{ matrix.kernel_version }}-${{ matrix.libc }}/${{ steps.asset-filename.outputs.name }}
+          asset_name: ${{ steps.asset-filename.outputs.name }}
+          asset_content_type: application/x-gtar
