@@ -1,4 +1,5 @@
 # kernel-collector
+<<<<<<< HEAD
 
 ![CI](https://github.com/netdata/kernel-collector/workflows/CI/badge.svg)
 ![CD](https://github.com/netdata/kernel-collector/workflows/CD/badge.svg)
@@ -181,3 +182,6 @@ is according with the following patterns:
 -   We have the variable NETDATASEL, that selects where the functions will be attached. Be
     sure that inside your code `0` is associated `kretprobe`, `1` is associated with `kretprobe`
     and `perf events` and `2` is assoacited with `kprobe`.
+=======
+Linux Kernel eBPF Collectors
+>>>>>>> e9eec3e46dd7b0b25b094fde75afef1b79d4849d
